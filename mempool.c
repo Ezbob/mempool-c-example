@@ -2,7 +2,6 @@
 #include <stdio.h>
 
 struct freelist {
-    char *mem;
     struct freelist *next;
 } freelist; 
 
@@ -14,27 +13,6 @@ struct mempool {
     struct freelist *free;
 };
 
-/*
- * freelist constructor. Uses the 'mspace' parameter as a
- * pointer to a record in the memory pool.
- */
-struct freelist *freelist_init(char *mspace) {
-    struct freelist *n = malloc(sizeof(struct freelist));
-    n->mem = mspace;
-    n->next = NULL;
-    return n;
-}
-
-/*
- * freelist destructor. Does NOT free any memory pointed
- * from it.
- */
-struct freelist *freelist_del(struct freelist *fl) {
-    fl->mem = NULL;
-    struct freelist *n = fl->next;
-    free(fl);
-    return n;
-}
 
 /*
  * Constructor for the mempool.
@@ -47,15 +25,20 @@ struct mempool *mempool_init(size_t itemsize, size_t cap) {
     struct mempool *mp = malloc(sizeof(struct mempool));
     mp->itemsize = itemsize;
     mp->capacity = cap;
-    mp->memspace = malloc(cap * itemsize);
+    mp->memspace = malloc(cap * (itemsize + sizeof(struct freelist)));
+                    // strip linked list elements in the memspace
     if ( mp->memspace == NULL ) {
         return NULL;
     }
-    mp->free = freelist_init(mp->memspace);
+    size_t blocksize = itemsize + sizeof(struct freelist);
+
+    printf(">>> %lu %lu %lu %lu %lu\n", cap * blocksize, cap, blocksize, sizeof(struct freelist), itemsize);
+    mp->free = (struct freelist *) mp->memspace;
 
     struct freelist *iter = mp->free;
     for ( size_t i = 1; i < cap; ++i ) {
-        iter->next = freelist_init(mp->memspace + (i * itemsize));
+        iter->next = (void *) (mp->memspace + i * blocksize);
+        printf("%p - %p\n", (void *) iter, (void *) iter->next);
         iter = iter->next;
     }
     iter->next = NULL;
@@ -70,10 +53,6 @@ struct mempool *mempool_init(size_t itemsize, size_t cap) {
  * the heap memory allocate to represent the memory pool.
  */
 void mempool_del(struct mempool *mp) {
-    struct freelist *iter = mp->free;
-    while ( iter != NULL ) {
-        iter = freelist_del(iter);
-    }
     free(mp->memspace);
     free(mp);
 }
@@ -84,8 +63,8 @@ void mempool_del(struct mempool *mp) {
 void *mempool_take(struct mempool *mp) {
     if ( mp->free != NULL ) {
         struct freelist *fl = mp->free;
-        void *res = (void *) fl->mem;
-        mp->free = freelist_del(fl);
+        void *res = (void *) (fl + 1); // actual memory is next to free struct
+        mp->free = fl->next;
         mp->freesize--;
         return res;
     } else {
@@ -98,20 +77,23 @@ void *mempool_take(struct mempool *mp) {
  * by putting it on the freelist.
  */
 int mempool_recycle(struct mempool *mp, void *mem) {
-    struct freelist *n = freelist_init((char *) mem);
-    if ( n != NULL ) {
-        n->next = mp->free;
-        mp->free = n;
-        mp->freesize++;
-        return 1;
-    }
-    return 0;
+    struct freelist *memspace = mem;
+    struct freelist *header = (memspace - 1);
+        /* because we have casted memspace to freelist we offset by one freelist pointer */
+    struct freelist *next = mp->free;
+    header->next = next;
+    mp->free = header;
+    mp->freesize++;
+    return 1;
 }
 
 /*
  * Enlarges the memory pool by adding another 'addition' items to the pool.
  */
 int mempool_grow(struct mempool *mp, size_t addition) {
+    (void) mp;
+    (void) addition;
+/*
     size_t cap = mp->capacity;
     size_t itemsize = mp->itemsize;
     size_t totalsize = (addition + cap) * itemsize;
@@ -129,44 +111,48 @@ int mempool_grow(struct mempool *mp, size_t addition) {
     } else {
         return 0;
     }
+*/
+    return 0;
 }
 
 
 /*  test struct */
-
 struct a {
     int a;
     long b;
 } a;
 
-
 int main() {
     size_t size = 100;
 
-    /* simple int example */
+    /* simple long example */
 
-    struct mempool *mp = mempool_init(sizeof(int), size);
+    struct mempool *mp = mempool_init(sizeof(long), size);
 
-    printf("so %s %lu\n", mp->capacity == size ? "true" : "false", 
-        mp->itemsize * mp->capacity + mp->capacity * sizeof(struct freelist) );
+    printf("-->%lu %lu\n", sizeof(struct freelist), sizeof(char));
 
-    int *a = mempool_take(mp);
-    *a = 42;
+    printf(":: %p\n", (void *) mp->free);
 
-    printf("--> alloced %i\n", *a);
+    long *a = mempool_take(mp);
+    *a = 42L;
+
+    printf("--> alloced %p %lu\n", (void *) a, *a);
 
     mempool_recycle(mp, a);
 
+    printf("now free %p\n", (void *) mp->free);
+
+    struct freelist *fp = (struct freelist *) mp->free;
     for ( size_t i = 0; i < size; ++i ) {
-        printf("%lu: %p \n", i, (void *) mp->free);
-        int *p = mempool_take(mp);
+        printf("%lu: %p %p \n", i, (void *) fp, (void *) fp->next);
+        long *p = mempool_take(mp);
         mempool_recycle(mp, p);
+        fp = fp->next;
     }
 
     mempool_del(mp);
 
     /* use of structs instead of ints */
-
     struct mempool *mpa = mempool_init(sizeof(struct a), size);
 
     struct a *n = mempool_take(mpa);
@@ -187,6 +173,7 @@ int main() {
     mempool_del(mpa);
 
     /* grow example */
+/*
     struct mempool *mpb = mempool_init(sizeof(struct a), size);
 
     mempool_grow(mpb, 100);
@@ -198,7 +185,7 @@ int main() {
     }
 
     mempool_del(mpb);
-
+*/
     return EXIT_SUCCESS;
 }
 

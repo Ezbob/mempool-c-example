@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <assert.h>
 
 struct freelist {
     struct freelist *next;
@@ -32,13 +33,11 @@ struct mempool *mempool_init(size_t itemsize, size_t cap) {
     }
     size_t blocksize = itemsize + sizeof(struct freelist);
 
-    printf(">>> %lu %lu %lu %lu %lu\n", cap * blocksize, cap, blocksize, sizeof(struct freelist), itemsize);
     mp->free = (struct freelist *) mp->memspace;
 
     struct freelist *iter = mp->free;
     for ( size_t i = 1; i < cap; ++i ) {
         iter->next = (void *) (mp->memspace + i * blocksize);
-        printf("%p - %p\n", (void *) iter, (void *) iter->next);
         iter = iter->next;
     }
     iter->next = NULL;
@@ -85,34 +84,6 @@ int mempool_recycle(struct mempool *mp, void *mem) {
     mp->free = header;
     mp->freesize++;
     return 1;
-}
-
-/*
- * Enlarges the memory pool by adding another 'addition' items to the pool.
- */
-int mempool_grow(struct mempool *mp, size_t addition) {
-    (void) mp;
-    (void) addition;
-/*
-    size_t cap = mp->capacity;
-    size_t itemsize = mp->itemsize;
-    size_t totalsize = (addition + cap) * itemsize;
-
-    char *resized = realloc(mp->memspace, totalsize);
-    if ( resized ) {
-        mp->memspace = resized;
-        for ( size_t i = cap; i < (cap + addition); ++i ) {
-            if ( !mempool_recycle(mp, mp->memspace + (i * itemsize)) ) {
-                return 0;
-            }
-        }
-        mp->capacity = (cap + addition);
-        return 1;
-    } else {
-        return 0;
-    }
-*/
-    return 0;
 }
 
 
@@ -163,29 +134,34 @@ int main() {
     printf("%i -> %li\n", n->a, n->b);
 
     mempool_recycle(mpa, n);
+    
+    struct a *structs[50] = {0};
 
-    for ( size_t i = 0; i < size; ++i ) {
-        printf("%lu: %p \n", i, (void *) mpa->free);
+    for ( size_t i = 0; i < 50; ++i ) {
         struct a *p = mempool_take(mpa);
-        mempool_recycle(mpa, p);
+
+        p->a = i - 1;
+        p->b = i + 10;
+
+        printf("%lu: %p \n", i, (void *) p);
+        structs[i] = p;
     }
+
+    for ( size_t i = 0; i < 20; ++i ) {
+        printf("%lu: %p \n", i , (void *) structs[i]);
+        mempool_recycle(mpa, structs[i]);
+    }
+
+    size_t count = 0;
+    for ( count = 0; mpa->free != NULL; ++count ) {
+        printf("%lu: %p \n", count, (void *) mempool_take(mpa));
+    }
+
+    assert(count == 70);
 
     mempool_del(mpa);
 
-    /* grow example */
-/*
-    struct mempool *mpb = mempool_init(sizeof(struct a), size);
 
-    mempool_grow(mpb, 100);
-
-    for ( size_t i = 0; i < size + 100; ++i ) {
-        printf("%lu: %p \n", i, (void *) mpb->free);
-        struct a *p = mempool_take(mpb);
-        mempool_recycle(mpb, p);
-    }
-
-    mempool_del(mpb);
-*/
     return EXIT_SUCCESS;
 }
 

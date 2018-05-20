@@ -7,7 +7,9 @@ typedef char** freelist_t;
 struct mempool {
     char *memspace;
     freelist_t free;
+    size_t itemsize;
     size_t capacity;
+    size_t freecount;
     struct mempool *next;
 };
 
@@ -26,12 +28,14 @@ struct mempool *mempool_init(size_t itemsize, size_t poolsize) {
     }
     size_t blocksize = itemsize + sizeof(char *);
     mp->capacity = poolsize * blocksize;
+    mp->itemsize = itemsize;
     mp->memspace = malloc(mp->capacity);
     if ( mp->memspace == NULL ) {
         return NULL;
     }
     mp->next = NULL;
     mp->free = (char **) (mp->memspace);
+    mp->freecount = poolsize;
 
     char **iter = mp->free;
     for ( size_t i = 1; i < poolsize; ++i ) {
@@ -50,8 +54,13 @@ struct mempool *mempool_init(size_t itemsize, size_t poolsize) {
  * the heap memory allocate to represent the memory pool.
  */
 void mempool_del(struct mempool *mp) {
-    free(mp->memspace);
-    free(mp);
+    struct mempool *iter = mp;
+    while ( iter != NULL ) {
+        struct mempool *next = iter->next;
+        free(iter->memspace);
+        free(iter);
+        iter = next;
+    }
 }
 
 /*
@@ -59,13 +68,28 @@ void mempool_del(struct mempool *mp) {
  */
 void *mempool_take(struct mempool *mp) {
     if ( mp->free != NULL ) {
-        char **fl = mp->free;
-        void *res = (void *) (fl + 1); // actual memory is next to free pointer
-        mp->free = (void *) *fl;
+        freelist_t head = mp->free;
+        void *res = (void *) (head + 1); // actual memory is next to free pointer
+        mp->freecount--;
+        mp->free = (void *) *head;
         return res;
-    } else {
-        return NULL;
     }
+
+    struct mempool *iter = mp;
+    while ( iter->next != NULL && iter->free == NULL ) { // search chain of pools
+        iter = iter->next;
+    }
+
+    if ( iter->next == NULL && iter->free == NULL ) { // every pool on the chain is full
+        iter->next = mempool_init(mp->itemsize, mp->capacity / (mp->itemsize + sizeof(freelist_t)) );
+        iter = iter->next;
+    }
+
+    freelist_t head = iter->free;
+    void *res = (void *) (head + 1);
+    iter->freecount--;
+    iter->free = (void *) *head;
+    return res;
 }
 
 /*
@@ -79,10 +103,19 @@ int mempool_hasaddr(struct mempool *mp, void *mem) {
  * Puts itemsize size memory back into the pool,
  * by putting it on the freelist.
  */
-void mempool_recycle(struct mempool *mp, void *mem) {
-    char **header = (((char **) mem) - 1); // next free pointer is to the left of the data
-    *header = (void *) mp->free;
-    mp->free = header;
+int mempool_recycle(struct mempool *mp, void *mem) {
+    struct mempool *iter = mp;
+    while ( iter != NULL && !mempool_hasaddr(iter, mem) ) {
+        iter = iter->next;
+    }
+    if ( iter ) {
+        freelist_t header = ( (freelist_t) mem ) - 1; // next free pointer is to the left of the data
+        *header = (void *) iter->free;
+        iter->freecount++;
+        iter->free = header;
+        return 0;
+    }
+    return 1;
 }
 
 /*  test struct */
@@ -99,8 +132,6 @@ int main() {
     /* simple long example */
 
     struct mempool *mp = mempool_init(sizeof(long), size);
-
-    printf("-->%lu %lu\n", sizeof(struct freelist), sizeof(char));
 
     printf(":: %p\n", (void *) mp->free);
 
@@ -159,6 +190,42 @@ int main() {
     assert(count == 70);
 
     mempool_del(mpa);
+
+    struct mempool *verylong = mempool_init(sizeof(struct a), size);
+
+    assert(verylong->freecount == size);
+
+    struct a *pool1[100] = {0};
+
+    for ( size_t i = 0; i < size; ++i ) {
+        struct a *p = mempool_take(verylong);
+        pool1[i] = p;
+        printf("%lu: %p\n", i, (void *) p);
+    } 
+
+    struct a *pool2[100] = {0};
+
+    for ( size_t i = 0; i < size; ++i ) {
+        struct a *p = mempool_take(verylong);
+        pool2[i] = p;
+        printf("%lu: %p\n", i + 100, (void *) p);
+    }
+
+    assert(verylong != NULL);
+    assert(verylong->next != NULL);
+
+    assert(verylong->freecount == 0);
+    assert(verylong->next->freecount == 0);
+
+    mempool_recycle(verylong, pool2[0]);
+    assert(verylong->next->freecount == 1);
+    assert(verylong->freecount == 0);
+
+    mempool_recycle(verylong, pool1[0]);
+    assert(verylong->freecount == 1);
+    assert(verylong->next->freecount == 1);
+
+    mempool_del(verylong);
 
     return EXIT_SUCCESS;
 }

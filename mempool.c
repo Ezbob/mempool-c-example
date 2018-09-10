@@ -2,13 +2,10 @@
 #include <stdio.h>
 #include <assert.h>
 
-typedef char** freelist_t;
-
 struct mempool {
     char *memspace;
-    freelist_t free;
+    char **free;
     size_t capacity;
-    struct mempool *next;
 };
 
 
@@ -28,9 +25,9 @@ struct mempool *mempool_init(size_t itemsize, size_t poolsize) {
     mp->capacity = poolsize * blocksize;
     mp->memspace = malloc(mp->capacity);
     if ( mp->memspace == NULL ) {
+        free(mp);
         return NULL;
     }
-    mp->next = NULL;
     mp->free = (char **) (mp->memspace);
 
     char **iter = mp->free;
@@ -98,65 +95,75 @@ int main() {
 
     /* simple long example */
 
+    printf("testing long pointers allocated and deallocated from the mempool\n");
+
     struct mempool *mp = mempool_init(sizeof(long), size);
 
-    printf("-->%lu %lu\n", sizeof(struct freelist), sizeof(char));
+    printf("Pointer size --> %lu\n", sizeof(char **));
 
-    printf(":: %p\n", (void *) mp->free);
+    printf("free list pointer --> %p\n", (void *) mp->free);
+
+    void *initial_free = (void *) mp->free;
 
     long *a = mempool_take(mp);
 
-    printf("in: %s\n", (mempool_hasaddr(mp, a) ? "true" : "false") );
-    printf("in: %s\n", (mempool_hasaddr(mp, &b) ? "true" : "false") );
+    printf("a (taken from mempool) is in mempool: %s\n", (mempool_hasaddr(mp, a) ? "true" : "false") );
+    assert(mempool_hasaddr(mp, a));
+    printf("b (not taken from  in mempool: %s\n", (mempool_hasaddr(mp, &b) ? "true" : "false") );
+    assert(!mempool_hasaddr(mp, &b));
 
-    printf(">> %p n: %p\n", (void *) a, (void *) mp->free);
+    assert(initial_free != (void *) mp->free);
     *a = 42L;
-
-    printf("--> alloced %p %lu\n", (void *) a, *a);
 
     mempool_recycle(mp, a);
 
-    printf("now free %p\n", (void *) mp->free);
+    assert(initial_free == (void *) mp->free);
+
     for ( size_t i = 0; i < size; ++i ) {
         long *p = mempool_take(mp);
-        printf("%p\n", (void *) p);
-        mempool_recycle(mp, p);
+        assert(mempool_hasaddr(mp, p));
     }
     mempool_del(mp);
+
+    printf("testing struct pointers allocated and deallocated from the mempool\n");
     struct mempool *mpa = mempool_init(sizeof(struct a), size);
     struct a *n = mempool_take(mpa);
 
     n->a = 10;
     n->b = 11L;
 
-    printf("%i -> %li\n", n->a, n->b);
+    printf("setting struct (a: %i, b: %li)\n", n->a, n->b);
+    assert(mempool_hasaddr(mpa, n));
 
     mempool_recycle(mpa, n);
     
     struct a *structs[50] = {0};
+    char **freepointers[50] = {0};
 
     for ( size_t i = 0; i < 50; ++i ) {
+        freepointers[i] = mpa->free;
         struct a *p = mempool_take(mpa);
 
         p->a = i - 1;
         p->b = i + 10;
-
-        printf("%lu: %p %i %lu \n", i, (void *) p, p->a, p->b);
+        
+        assert(mempool_hasaddr(mpa, p));
+        printf("struct %lu: (addr: %p, a: %i, b: %lu)\n", i, (void *) p, p->a, p->b);
         structs[i] = p;
     }
 
-    for ( size_t i = 0; i < 20; ++i ) {
-        printf("%lu: %p \n", i , (void *) structs[i]);
-        mempool_recycle(mpa, structs[i]);
-    }
+    for ( size_t i = 0; i < 50; ++i ) {
+        struct a *p = structs[i];
+        printf("struct %lu: (addr: %p, a: %i, b: %lu)\n", i, (void *) p, p->a, p->b);
 
-    size_t count = 0;
-    for ( count = 0; mpa->free != NULL; ++count ) {
-        struct a *k = mempool_take(mpa);
-        printf("%lu: %p %s\n", count, (void *) k, (mempool_hasaddr(mpa, k) ? "true" : "false") );
+        assert(mempool_hasaddr(mpa, p));
+        assert(p->a == ((int) i) - 1);
+        assert(p->b == ((long) i) + 10);
+        char **free = freepointers[49 - i];
+        printf("%p = %p\n", (void *) free, (void *) mpa->free);
+        //assert(free == mpa->free);
+        mempool_recycle(mpa, p);
     }
-
-    assert(count == 70);
 
     mempool_del(mpa);
 

@@ -9,7 +9,8 @@ struct a {
   long b;
 } a;
 
-int main() {
+int main(void) {
+
   size_t size = 100;
 
   int b = 20;

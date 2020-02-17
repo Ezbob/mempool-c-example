@@ -8,8 +8,8 @@
  */
 struct mempool
 {
-    char *memspace;  /* memory space */
-    char **free;     /* next free pointer into memspace */
+    unsigned char *memspace;  /* memory space */
+    unsigned char **free;     /* next free pointer into memspace */
     size_t capacity; /* byte capacity of mempool */
 };
 

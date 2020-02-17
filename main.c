@@ -62,7 +62,7 @@ int main() {
   mempool_recycle(mpa, n);
 
   struct a *structs[50] = {0};
-  char **freepointers[50] = {0};
+  unsigned char **freepointers[50] = {0};
 
   for (size_t i = 0; i < 50; ++i) {
     freepointers[i] = mpa->free;
@@ -85,7 +85,7 @@ int main() {
     assert(mempool_hasaddr(mpa, p));
     assert(p->a == ((int)i) - 1);
     assert(p->b == ((long)i) + 10);
-    char **free = freepointers[49 - i];
+    unsigned char **free = freepointers[49 - i];
     printf("%p = %p\n", (void *)free, (void *)mpa->free);
     // assert(free == mpa->free);
     mempool_recycle(mpa, p);

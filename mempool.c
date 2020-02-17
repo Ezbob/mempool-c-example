@@ -1,6 +1,9 @@
 
 #include "mempool.h"
 
+/**
+ * mempool initializer
+ */
 int mempool_init(struct mempool *mp, size_t itemsize, size_t poolsize) {
 
   size_t blocksize = itemsize + sizeof(unsigned char *);

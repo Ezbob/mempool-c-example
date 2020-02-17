@@ -1,3 +1,14 @@
+/**
+ * mempool.c - A super simple implementation of a memory pool.
+ * This implementation uses a fixed-size mempool of fixed-size records.
+ *
+ * Some terminology used in the comments:
+ * - record: a piece of user-data that needs to be stored in the pool
+ * - block: a piece of data that is a record plus a embedded free-pointer
+ * 
+ * Author: Anders Busch (2018-2020)
+ */
+
 #ifndef MEMPOOL_H
 #define MEMPOOL_H
 

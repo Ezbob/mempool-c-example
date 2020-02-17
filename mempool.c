@@ -1,17 +1,13 @@
 
 #include "mempool.h"
 
-struct mempool *mempool_init(size_t itemsize, size_t poolsize) {
-  struct mempool *mp = malloc(sizeof(struct mempool));
-  if (mp == NULL) {
-    return NULL;
-  }
-  size_t blocksize = itemsize + sizeof(char *);
+int mempool_init(struct mempool *mp, size_t itemsize, size_t poolsize) {
+
+  size_t blocksize = itemsize + sizeof(unsigned char *);
   mp->capacity = poolsize * blocksize;
   mp->memspace = malloc(mp->capacity);
   if (mp->memspace == NULL) {
-    free(mp);
-    return NULL;
+    return 1;
   }
   mp->free = (unsigned char **)(mp->memspace);
 
@@ -23,12 +19,14 @@ struct mempool *mempool_init(size_t itemsize, size_t poolsize) {
   }
   *iter = NULL;
 
-  return mp;
+  return 0;
 }
 
-void mempool_del(struct mempool *mp) {
+void mempool_deinit(struct mempool *mp) {
   free(mp->memspace);
-  free(mp);
+  mp->memspace = NULL;
+  mp->free = NULL;
+  mp->capacity = 0;
 }
 
 /*

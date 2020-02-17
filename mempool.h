@@ -8,40 +8,38 @@
  */
 struct mempool
 {
-    unsigned char *memspace;  /* memory space */
-    unsigned char **free;     /* next free pointer into memspace */
-    size_t capacity; /* byte capacity of mempool */
+    unsigned char *memspace; /* memory space */
+    unsigned char **free;    /* next free pointer into memspace */
+    size_t capacity;         /* byte capacity of mempool */
 };
 
 /*
- * Constructor for the mempool.
- * The 'itemsize' size parameter is the size in bytes of the entities
- * that the mempool represents a pool of; and the 'cap' parameter is
- * the maximum number of such items that the pool is enable to supply
- * any consumers with.
+ * Memory pool initializer.
+ * The 'itemsize' parameter represent the size of a record in the pool.
+ * 'poolsize' represents number of records that should be contained in the memory pool.
  */
-struct mempool *mempool_init(size_t itemsize, size_t poolsize);
+int mempool_init(struct mempool *, size_t itemsize, size_t poolsize);
 
 /*
- * Memory pool destructor.
- * Deallocates the remaining records in the free lists, and deallocates
- * the heap memory allocate to represent the memory pool.
+ * Memory pool de-initializer.
+ * Deallocates the remaining records in the free lists, and memory pool
+ * fields.
  */
-void mempool_del(struct mempool *mp);
+void mempool_deinit(struct mempool *mp);
 
 /*
- * Takes itemsize memory from the memory pool.
+ * Takes a record from the memory pool.
  */
 void *mempool_take(struct mempool *mp);
 
 /*
- * Check if memory is in pool 
+ * Check if record is in pool
  */
 int mempool_hasaddr(struct mempool *mp, void *mem);
 
 /*
- * Puts itemsize size memory back into the pool,
- * by putting it on the freelist.
+ * Puts record back into the pool, making it available to
+ * others again.
  */
 void mempool_recycle(struct mempool *mp, void *mem);
 

@@ -12,24 +12,39 @@
 #ifndef MEMPOOL_H
 #define MEMPOOL_H
 
-#include <stdlib.h>
+#include <stdint.h>
 
 /*
  * Mempool struct
  */
 struct mempool
 {
-    unsigned char *memspace; /* memory space */
-    unsigned char **free;    /* next free pointer into memspace */
-    size_t capacity;         /* byte capacity of mempool */
+    void *(*allocator)(size_t);   /* allocator, interface is the same as stdlib malloc */
+    void (*deallocator)(void *);  /* deallocator, interface is the same as stdlib free */
+
+    unsigned char *memspace;      /* memory space */
+    unsigned char **free;         /* next free pointer into memspace */
+    size_t capacity;              /* byte capacity of mempool */
 };
 
 /*
  * Memory pool initializer.
  * The 'itemsize' parameter represent the size of a record in the pool.
  * 'poolsize' represents number of records that should be contained in the memory pool.
+ * 
+ * Returns 0 on success, -1 on error.
  */
 int mempool_init(struct mempool *, size_t itemsize, size_t poolsize);
+
+/*
+ * Memory pool initializer.
+ * This gives possibility of using custom deallocator/allocator.
+ * The allocator and deallocator has the same function signature as stdlib malloc/free.
+ * 
+ * Returns 0 on success, -1 on error.
+ */
+int mempool_init2(struct mempool *mp, size_t itemsize, size_t poolsize,
+                  void *(*allocator)(size_t), void (*deallocator)(void *));
 
 /*
  * Memory pool de-initializer.

@@ -59,7 +59,7 @@ int mempool_init2(struct mempool *mp, size_t itemsize, size_t poolsize,
 }
 
 void mempool_deinit(struct mempool *mp) {
-  free(mp->memspace);
+  mp->deallocator(mp->memspace);
   mp->memspace = NULL;
   mp->free = NULL;
   mp->capacity = 0;

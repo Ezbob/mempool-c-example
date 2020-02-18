@@ -3,14 +3,8 @@
 
 #include <stdlib.h>
 
-/**
- * mempool initializer with default allocators
- */
-int mempool_init(struct mempool *mp, size_t itemsize, size_t poolsize) {
-
-  mp->allocator = malloc;
-  mp->deallocator = free;
-
+static inline int _mempool_init_impl(struct mempool *mp, size_t itemsize,
+                                     size_t poolsize) {
   size_t blocksize = itemsize + sizeof(unsigned char *);
   mp->capacity = poolsize * blocksize;
   mp->memspace = mp->allocator(mp->capacity);
@@ -31,6 +25,17 @@ int mempool_init(struct mempool *mp, size_t itemsize, size_t poolsize) {
 }
 
 /**
+ * mempool initializer with default allocators
+ */
+int mempool_init(struct mempool *mp, size_t itemsize, size_t poolsize) {
+
+  mp->allocator = malloc;
+  mp->deallocator = free;
+
+  return _mempool_init_impl(mp, itemsize, poolsize);
+}
+
+/**
  * mempool initializer with custom allocators
  */
 int mempool_init2(struct mempool *mp, size_t itemsize, size_t poolsize,
@@ -39,23 +44,7 @@ int mempool_init2(struct mempool *mp, size_t itemsize, size_t poolsize,
   mp->allocator = allocator;
   mp->deallocator = deallocator;
 
-  size_t blocksize = itemsize + sizeof(unsigned char *);
-  mp->capacity = poolsize * blocksize;
-  mp->memspace = allocator(mp->capacity);
-  if (mp->memspace == NULL) {
-    return -1;
-  }
-  mp->free = (unsigned char **)(mp->memspace);
-
-  unsigned char **iter = mp->free;
-  for (size_t i = 1; i < poolsize; ++i) {
-    void *next = (mp->memspace + i * blocksize);
-    *iter = next; // make current free pointer point to start of next block
-    iter = (unsigned char **)next; // advance to next free pointer
-  }
-  *iter = NULL;
-
-  return 0;
+  return _mempool_init_impl(mp, itemsize, poolsize);
 }
 
 void mempool_deinit(struct mempool *mp) {

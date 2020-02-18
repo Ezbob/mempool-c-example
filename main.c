@@ -7,7 +7,7 @@
 struct a {
   int a;
   long b;
-} a;
+};
 
 int main(void) {
 
@@ -69,7 +69,7 @@ int main(void) {
   struct a *structs[50] = {0};
   unsigned char **freepointers[50] = {0};
 
-  for (size_t i = 0; i < 50; ++i) {
+  for (int i = 0; i < 50; ++i) {
     freepointers[i] = mpa.free;
     struct a *p = mempool_take(&mpa);
 
@@ -77,7 +77,7 @@ int main(void) {
     p->b = i + 10;
 
     assert(mempool_hasaddr(&mpa, p));
-    printf("struct %llu: (addr: %p, a: %i, b: %lu)\n", i, (void *)p, p->a,
+    printf("struct %i: (addr: %p, a: %i, b: %lu)\n", i, (void *)p, p->a,
            p->b);
     structs[i] = p;
   }

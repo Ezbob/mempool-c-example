@@ -23,7 +23,8 @@ struct mempool
     void (*deallocator)(void *);  /* deallocator, interface is the same as stdlib free */
 
     unsigned char *memspace;      /* memory space */
-    unsigned char **free;         /* next free pointer into memspace */
+    unsigned char **free;         /* free list */
+    unsigned char **next_free;    /* next free */
     size_t capacity;              /* byte capacity of mempool */
 };
 

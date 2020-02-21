@@ -5,21 +5,24 @@
 
 static inline int _mempool_init_impl(struct mempool *mp, size_t itemsize,
                                      size_t poolsize) {
-  size_t blocksize = itemsize + sizeof(unsigned char *);
-  mp->capacity = poolsize * blocksize;
+
+  mp->capacity = poolsize * itemsize;
   mp->memspace = mp->allocator(mp->capacity);
   if (mp->memspace == NULL) {
     return -1;
   }
-  mp->free = (unsigned char **)(mp->memspace);
 
-  unsigned char **iter = mp->free;
-  for (size_t i = 1; i < poolsize; ++i) {
-    void *next = (mp->memspace + i * blocksize);
-    *iter = next; // make current free pointer point to start of next block
-    iter = (unsigned char **)next; // advance to next free pointer
+  mp->free = mp->allocator((poolsize + 1) * sizeof(unsigned char *));
+  if (mp->free == NULL) {
+    mp->deallocator(mp->memspace);
+    return -1;
   }
-  *iter = NULL;
+
+  for (size_t i = 0; i < poolsize; ++i) {
+    mp->free[i] = mp->memspace + (itemsize * i);
+  }
+  mp->free[poolsize + 1] = NULL; // sentinel
+  mp->next_free = mp->free;
 
   return 0;
 }
@@ -48,7 +51,16 @@ int mempool_init2(struct mempool *mp, size_t itemsize, size_t poolsize,
 }
 
 void mempool_deinit(struct mempool *mp) {
+  printf("mem: %p, free: %p\n", mp->memspace, mp->free);
+  unsigned char **it = mp->free;
+  while( (*it) != NULL ) {
+    *it = NULL;
+    it++;
+  }
   mp->deallocator(mp->memspace);
+  printf("--> %p\n", *mp->free);
+  mp->deallocator(&mp->free);
+  mp->next_free = NULL;
   mp->memspace = NULL;
   mp->free = NULL;
   mp->capacity = 0;
@@ -58,11 +70,10 @@ void mempool_deinit(struct mempool *mp) {
  * Takes itemsize memory from the memory pool.
  */
 void *mempool_take(struct mempool *mp) {
-  if (mp->free != NULL) {
-    unsigned char **fl = mp->free;
-    void *res = (void *)(fl + 1); // actual memory is next to free pointer
-    mp->free = (void *)*fl;
-    return res;
+  if ((*mp->next_free) != NULL) {
+    unsigned char **fl = mp->next_free;
+    mp->next_free = fl + 1;
+    return (void *)(*fl);
   } else {
     return NULL;
   }
@@ -81,8 +92,10 @@ int mempool_hasaddr(struct mempool *mp, void *mem) {
  * by putting it on the freelist.
  */
 void mempool_recycle(struct mempool *mp, void *mem) {
-  unsigned char **header = (((unsigned char **)mem) -
-                            1); // next free pointer is to the left of the data
-  *header = (void *)mp->free;
-  mp->free = header;
+  if (mp->next_free == mp->free) {
+    return; // we have reached the head of the free list
+  }
+  unsigned char **free = mp->next_free - 1;
+  *free = ((unsigned char *) mem);
+  mp->next_free = free;
 }
